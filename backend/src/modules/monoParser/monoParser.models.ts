@@ -3,6 +3,10 @@ import {
   StructLayoutGenerator,
 } from "../structLayoutGenerator/structLayoutGenerator.service";
 
+// hackmud's windows mono is built with MSVC, which lays out mutexes and bitfields differently than gcc on linux.
+// The windows offsets below were measured on a live client
+const isMsvcBuild = process.platform === "win32";
+
 // struct _MonoType {
 // 	union {
 // 		MonoClass *klass; /* for VALUETYPE and CLASS */
@@ -109,10 +113,16 @@ export const _MonoClassD = defineStruct({
     { ctype: "guint8", name: "rank", type: "uint8" },
     { ctype: "guint8", name: "class_kind", type: "uint8" },
 
+    // MSVC: `int instance_size` sits here and the 'inited'..'is_byreflike' bitfields get their own 4 bytes after it.
+    // gcc packs everything into the same space, so on linux this is 0 bytes
+    { ctype: "int", name: "instance_size", type: "padding", size: isMsvcBuild ? 4 : 0 },
+
     { ctype: "guint", name: "bitfields1", type: "uint32" }, // This represents bitfields from 'inited' through 'is_byreflike'
 
     // Next byte - alignment and packing
     { ctype: "guint8", name: "min_align", type: "uint8" },
+    // MSVC starts a new 4 byte unit for the bitfields after min_align
+    { ctype: "guint", name: "bitfields_unit", type: "padding", size: isMsvcBuild ? 3 : 0 },
     { type: "uint8", name: "bitfields2" }, // Bitfields from 'packing_size' through 'contextbound'
     { type: "uint8", name: "bitfields3" }, // Bitfields from 'delegate' through 'nested_classes_inited'
     { type: "uint8", name: "bitfields4" }, // Bitfields from 'interfaces_inited' through 'has_dim_conflicts'
@@ -779,10 +789,17 @@ export const _MonoDomainD = defineStruct({
     // 	gboolean recursive;
     // } mono_mutex_t;
 
-    { ctype: "MonoCoopMutex", name: "lock", type: "padding", size: 48 }, //WTF????
+    // linux: pthread_mutex_t = 40 bytes
+    // windows: CRITICAL_SECTION (40) + gboolean recursive (4) + padding = 48 bytes
+    {
+      ctype: "MonoCoopMutex",
+      name: "lock",
+      type: "padding",
+      size: isMsvcBuild ? 48 : 40,
+    },
 
-    // First object - depends on NETCORE define
-    // { ctype: "MonoAppDomainSetup", name: "setup", type: "ptr" }, // !ENABLE_NETCORE
+    // First object - depends on NETCORE define. Present in hackmud's mono
+    { ctype: "MonoAppDomainSetup*", name: "setup", type: "ptr" }, // !ENABLE_NETCORE
 
     { ctype: "MonoAppDomain*", name: "domain", type: "ptr" },
     { ctype: "MonoAppContext*", name: "default_context", type: "ptr" },

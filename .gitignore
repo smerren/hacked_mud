@@ -54,3 +54,7 @@ dist/server.exe
 notes.local
 /local
 backend/cache/*
+backend/logs/
+backend/settings.json
+backend/dashboard/
+installer/vendor/

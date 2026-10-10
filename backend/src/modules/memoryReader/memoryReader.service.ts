@@ -1,7 +1,7 @@
-import * as fs from "fs";
-import type { FileHandle, FileReadResult } from "fs/promises";
 import { err, ok, Result, ResultAsync } from "neverthrow";
 import type { MemoryReaderError } from "./memoryReader.models";
+import { platform } from "../platform/platform.service";
+import type { MemorySource } from "../platform/platform.types";
 
 const alloc = Result.fromThrowable(
   Buffer.alloc.bind(Buffer),
@@ -11,26 +11,18 @@ const alloc = Result.fromThrowable(
 export class MemoryReader {
   private constructor(
     public pid: number,
-    private file: FileHandle
+    private source: MemorySource
   ) {}
 
   public static create(pid: number): ResultAsync<MemoryReader, MemoryReaderError> {
-    const memPath = `/proc/${pid}/mem`;
-    return ResultAsync.fromPromise(
-      fs.promises.open(memPath, "r"),
-      e =>
-        ({
-          type: "MEMORY_READER_ERROR",
-          cause: e as Error,
-        }) satisfies MemoryReaderError
-    ).map(file => {
-      return new MemoryReader(pid, file);
+    return platform.openMemory(pid).map(source => {
+      return new MemoryReader(pid, source);
     });
   }
 
   close(): ResultAsync<void, MemoryReaderError> {
     return ResultAsync.fromPromise(
-      this.file.close(),
+      this.source.close(),
       e =>
         ({
           type: "MEMORY_READER_ERROR",
@@ -43,14 +35,13 @@ export class MemoryReader {
     // });
   }
 
-  fileRead(
-    f: FileHandle,
+  sourceRead(
     buffer: Buffer<ArrayBuffer>,
     bufferSize: number,
     address: bigint
-  ): ResultAsync<FileReadResult<Buffer<ArrayBuffer>>, MemoryReaderError> {
+  ): ResultAsync<{ bytesRead: number }, MemoryReaderError> {
     return ResultAsync.fromPromise(
-      f.read(buffer, 0, bufferSize, Number(address)),
+      this.source.read(buffer, bufferSize, address).then(bytesRead => ({ bytesRead })),
       e =>
         ({
           type: "MEMORY_READER_ERROR",
@@ -63,7 +54,7 @@ export class MemoryReader {
     return alloc(size)
       .map(buffer => ({ buffer }))
       .asyncAndThen(ctx =>
-        this.fileRead(this.file, ctx.buffer, size, address).map(data => ({ ...ctx, data }))
+        this.sourceRead(ctx.buffer, size, address).map(data => ({ ...ctx, data }))
       )
       .andThen(ctx => {
         if (ctx.data.bytesRead != size) {

@@ -3,7 +3,6 @@ import { LinkedObject } from "../linkedObject/linkedObject.service";
 import { shellToTerminalColors } from "../../utils/shellToTerminalColors";
 import { bigIntReplacer } from "../../utils/bigIntReplacer";
 import { log } from "@backend/plugins/logger/logger";
-import { getProcMaps } from "../procParser/procParser.service";
 import { mkdirRecursiveAsync } from "@backend/utils/fs";
 import type { HackmudGameState, HackmudShellState } from "@shared/types/HackmudUpdateEvent.model";
 import type { cache, cacheStr, InitedHackmudReader } from "./hackmudMemoryReader.types";
@@ -20,7 +19,9 @@ import type { AssemblyNotFoundError, MonoClass } from "../monoParser/monoParser.
 import { TypeCode, type FieldNotFoundError } from "../linkedObject/linkedObject.types";
 import type { MemoryReaderError } from "../memoryReader/memoryReader.models";
 import type { ProcNotFoundError } from "../procParser/procParser.types";
-import { ELFParser } from "../ElfParser/ElfParser.service";
+import { platform } from "../platform/platform.service";
+import type { WinApiError } from "../platform/platform.types";
+import { dataPaths } from "../platform/paths";
 
 export class HackmudMemoryReader {
   public shell: string = "";
@@ -41,7 +42,7 @@ export class HackmudMemoryReader {
     public initedHackmudReader: InitedHackmudReader,
     private mr: MemoryReader
   ) {
-    this.cacheDir = "/app/backend/cache/" + this.pid;
+    this.cacheDir = dataPaths.cache + "/" + this.pid;
   }
 
   public static create(
@@ -55,6 +56,7 @@ export class HackmudMemoryReader {
     | AssemblyNotFoundError
     | FieldNotFoundError
     | ProcNotFoundError
+    | WinApiError
   > {
     return toResultAsync(this._create(pid));
   }
@@ -71,9 +73,10 @@ export class HackmudMemoryReader {
       | AssemblyNotFoundError
       | FieldNotFoundError
       | ProcNotFoundError
+      | WinApiError
     >
   > {
-    const cacheDir = "/app/backend/cache/" + pid;
+    const cacheDir = dataPaths.cache + "/" + pid;
     const mrRes = await MemoryReader.create(pid);
     if (mrRes.isErr()) return err(mrRes.error);
 
@@ -94,24 +97,16 @@ export class HackmudMemoryReader {
 
     await mkdirRecursiveAsync(cacheDir);
 
-    const procMapsRes = await getProcMaps(pid);
+    const procMapsRes = await platform.getMemoryRegions(pid);
     if (procMapsRes.isErr()) return err(procMapsRes.error);
     const procMaps = procMapsRes.value;
 
-    const monoModule = procMaps.find(m => m.path.includes("libmonobdwgc"));
-    if (!monoModule)
-      return err({ type: "NULL_POINTER_ERROR", var: "monoModule" } satisfies NullPointerError);
-
-    const p = new ELFParser(mr, monoModule);
-    const elf = await p.parseElf();
-    if (elf.isErr()) return err(elf.error);
-
-    const monoDomain = elf.value.symbols.find(a => a.name == "mono_get_root_domain");
-    if (!monoDomain)
-      return err({ type: "NULL_POINTER_ERROR", var: "monoDomain" } satisfies NullPointerError);
+    const rootDomainRes = await platform.findMonoRootDomain(pid, procMaps, mr);
+    if (rootDomainRes.isErr()) return err(rootDomainRes.error);
+    const { monoModuleStart, rootDomainFn } = rootDomainRes.value;
 
     // log.trace({monoDomainSymbol: monoDomain})
-    const monoParser = new MonoParser(pid, monoModule.start, monoDomain.st_value, mr);
+    const monoParser = new MonoParser(pid, monoModuleStart, rootDomainFn, mr);
 
     const gameAssemblyRes = await monoParser.parseAssemblyByName("Core");
     if (gameAssemblyRes.isErr()) return err(gameAssemblyRes.error);

@@ -1,0 +1,14 @@
+hacked mud is MIT licensed (see LICENSE in the source repository).
+
+This installer also contains third party software:
+
+Bun (embedded in hacked_mud.exe)
+  License: MIT
+  https://github.com/oven-sh/bun
+
+Sandboxie-Plus (only installed when "Set up a second Steam account" is selected)
+  License: GPL-3.0. Distributed unmodified, as the official installer.
+  Source code: https://github.com/sandboxie-plus/Sandboxie
+  Sandboxie-Plus is installed as its own program and has its own uninstaller.
+
+hacked mud is not affiliated with hackmud, Valve or Steam. You need your own copy of hackmud on Steam.

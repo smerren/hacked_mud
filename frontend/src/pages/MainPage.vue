@@ -96,6 +96,9 @@
             </div>
           </div>
           <div class="q-mt-lg">
+            <SandboxesPanel />
+          </div>
+          <div class="q-mt-lg">
             <div class="q-mb-sm">Quick links</div>
             <div class="q-gutter-sm column">
               <template v-for="(link, index) in links" :key="index">
@@ -180,6 +183,7 @@ import { onMounted, onUnmounted, ref } from "vue";
 import { backend } from "src/utils/eden";
 import { Scenarios, type Scenario } from "@shared/types/scenario.types";
 import {shellToHTML} from "src/utils/shellToHTML.utils"
+import SandboxesPanel from "src/components/SandboxesPanel.vue";
 
 const toScrollChat = ref(true);
 const toShowSettings = ref(false);

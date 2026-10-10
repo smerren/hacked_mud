@@ -10,8 +10,12 @@ import { getRotatingFileSink, getTimeRotatingFileSink } from "@logtape/file";
 import { getPrettyFormatter } from "@logtape/pretty";
 import { env, isDevelopment } from "../../config";
 import { mkdirRecursiveAsync } from "@backend/utils/fs";
+import { dataPaths } from "@backend/modules/platform/paths";
+import * as path from "path";
 
 const ONE_MB = 0x400 * 0x400;
+const jsonLogsDir = path.join(dataPaths.logs, "json");
+const prettyLogsDir = path.join(dataPaths.logs, "pretty");
 
 const logLevel = env.LOGGER_LEVEL;
 
@@ -105,8 +109,8 @@ function getTimezoneOffset(date: Date, timezone: string): string {
 }
 
 async function initLogger() {
-  await mkdirRecursiveAsync("/logs/json");
-  await mkdirRecursiveAsync("/logs/pretty");
+  await mkdirRecursiveAsync(jsonLogsDir);
+  await mkdirRecursiveAsync(prettyLogsDir);
 
   if (isDevelopment) {
     await configure({
@@ -136,11 +140,11 @@ async function initLogger() {
         // console: getConsoleSink({ formatter: jsonLinesFormatter }),
         console: getConsoleSink({ formatter: myFormatter }),
         file: getTimeRotatingFileSink({
-          directory: "/logs/json",
+          directory: jsonLogsDir,
           formatter: myFormatter,
           interval: "weekly",
         }),
-        filePretty: getRotatingFileSink("/logs/pretty/app.log", {
+        filePretty: getRotatingFileSink(path.join(prettyLogsDir, "app.log"), {
           formatter: defaultTextFormatter,
           maxFiles: 2,
           maxSize: ONE_MB * 50,

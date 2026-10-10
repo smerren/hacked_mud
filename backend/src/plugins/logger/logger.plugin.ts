@@ -35,11 +35,11 @@ export const logtapePlugin = new Elysia({ name: "logger" })
     }
     // log.error(e);
 
-    const req = request.clone();
+    // no request.clone() here: the body is already consumed and newer bun throws on cloning it
     const logObj: LogRequestResponseArgs = {
       id: String(request.headers.get("x-correlation-id")) ?? "",
-      method: req.method,
-      url: req.url,
+      method: request.method,
+      url: request.url,
       reqBody: body,
       resBody: {},
       status: Number(set.status),
@@ -79,11 +79,10 @@ export const logtapePlugin = new Elysia({ name: "logger" })
 
     if (!config.toLog) return;
 
-    const req = request.clone();
     logRequestResponse({
       id: String(request.headers.get("x-correlation-id")) ?? "",
-      method: req.method,
-      url: req.url,
+      method: request.method,
+      url: request.url,
       reqBody: body,
       resBody: config.toLogBody ? responseValue : { bodyIsHiddenFromLog: true },
       status: Number(set.status),

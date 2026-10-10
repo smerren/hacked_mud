@@ -92,7 +92,11 @@ export class LinkedObject {
         const chunkSize = Math.min(CHUNK_SIZE, Number(module.size) - offset);
 
         const chunkRes = await mr.readBytes(module.start + BigInt(offset), chunkSize);
-        if (chunkRes.isErr()) return err(chunkRes.error);
+        // the game keeps allocating/freeing while we scan, a region can shrink between listing and reading it
+        if (chunkRes.isErr()) {
+          log.debug("Skipping unreadable chunk {*}", { cause: chunkRes.error.cause.message });
+          continue;
+        }
         const chunk = chunkRes.value;
 
         for (let pos = 0; pos < chunk.length - 8; pos += 8) {

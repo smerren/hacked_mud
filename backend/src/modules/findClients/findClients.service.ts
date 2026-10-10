@@ -1,119 +1,22 @@
-import { exec } from "child_process";
-import { promisify } from "util";
 import { log } from "@backend/plugins/logger/logger";
-import { getProcMaps } from "../procParser/procParser.service";
-import { err, errAsync, ok, okAsync, Result, ResultAsync } from "neverthrow";
-import { toResultAsync, type ExecError } from "@backend/utils/neverthrow";
+import { errAsync, ok, okAsync, Result, ResultAsync } from "neverthrow";
+import { toResultAsync } from "@backend/utils/neverthrow";
 import { socketServerService } from "../socketServer/socketServer.service";
 import { HackmudClient } from "../hackmudClient/hackmudClient.service";
 import type { ClientNotFoundError } from "./findClients.models";
 import { OOG } from "../OOG/oog.service";
+import { platform } from "../platform/platform.service";
+import type { HackmudValidPid, PlatformError } from "../platform/platform.types";
 // import { HackmudClient } from "../hackmudClient/hackmudClient.service";
 
-const execAsync = ResultAsync.fromThrowable(
-  async (a: string) => promisify(exec)(a),
-  e => {
-    return {
-      cause: e as Error,
-      type: "EXEC_ERROR",
-    } satisfies ExecError;
-  }
-);
-
-export type UselessPidError = {
-  type: "USELESS_PID";
-  pid: number;
-};
-
-export type HackmudValidPid = { pid: number; windowId: number; display: number };
+export type { HackmudValidPid } from "../platform/platform.types";
 export const HackmudClients = new Map<number, HackmudClient>();
 export const HackmudOOGs = new Map<number, OOG>();
 
 export abstract class findClientsService {
   static isRepopulating: boolean = false;
-  static findClients(): ResultAsync<HackmudValidPid[], ExecError> {
-    return execAsync("pgrep -f hackmud").andThen(resp => {
-      log.trace("pgrep -f hackmud {*} ", resp);
-      const t = resp.stdout.trim();
-      if (!t) {
-        return ok([]);
-      }
-      const pids = t
-        .split("\n")
-        .map(pid => Number(pid))
-        .filter(pid => !isNaN(pid));
-
-      const results: ResultAsync<HackmudValidPid | undefined, never>[] = [];
-      for (const pid of pids) {
-        results.push(this.validatePid(pid).orElse(_ => ok(undefined)));
-      }
-
-      return ResultAsync.combine(results).andThen(valid => {
-        return ok(valid.filter(a => !!a));
-      });
-    });
-  }
-
-  static validatePid(pid: number): ResultAsync<HackmudValidPid, UselessPidError> {
-    const ue = err({
-      type: "USELESS_PID",
-      pid,
-    } satisfies UselessPidError);
-
-    log.trace("Validating PID " + pid);
-
-    return this.hasMono(pid)
-      .andThen(has => {
-        log.trace(pid + " Has mono? " + has);
-
-        if (!has) return ue;
-        return ok();
-      })
-      .andThen(_ => execAsync(`cat /proc/${pid}/environ | tr '\\0' '\n' | grep DISPLAY`))
-      .map(envs => {
-        log.trace(`cat /proc/${pid}/environ | tr '\\0' '\\n' | grep DISPLAY response {*}`, envs);
-
-        return Number(envs.stdout.replaceAll("DISPLAY=:", "").trim());
-      })
-      .andThen(display =>
-        execAsync(`DISPLAY=:${display} xdotool search --classname hackmud_lin.x86_64`).map(
-          winId => {
-            log.trace(
-              `DISPLAY=:${display} xdotool search --classname hackmud_lin.x86_64 response {*}`,
-              winId
-            );
-            return {
-              pid,
-              windowId: Number(winId.stdout),
-              display,
-            } satisfies HackmudValidPid;
-          }
-        )
-      )
-      .orElse(e => {
-        if (e.type == "EXEC_ERROR") {
-          log.warn(e);
-          return ue;
-        }
-        return err(e);
-      });
-  }
-
-  static hasMono(pid: number): ResultAsync<boolean, never> {
-    return getProcMaps(pid)
-      .andThen(modules => {
-        const mono = modules.find(m => m.path.includes("libmonobdwgc"));
-        return ok(!!mono);
-      })
-      .orElse(e => {
-        switch (e.type) {
-          case "EXEC_ERROR":
-            log.warn(e);
-            return ok(false);
-          case "PROC_NOT_FOUND_ERROR":
-            return ok(false);
-        }
-      });
+  static findClients(): ResultAsync<HackmudValidPid[], PlatformError> {
+    return platform.findClients();
   }
 
   static repopulateMemReaders() {

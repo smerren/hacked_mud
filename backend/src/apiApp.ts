@@ -8,6 +8,7 @@ import { healthHandler } from "./modules/healthcheck/healthcheck.handler";
 import { hackmudShellHandler } from "./modules/hackmudShell/hackmudShell.handler";
 import { findClientsHandler } from "./modules/findClients/findClients.handler";
 import { socketServerHandler } from "./modules/socketServer/socketServer.handler";
+import { sandboxesHandler } from "./modules/sandboxes/sandboxes.handler";
 // import { treaty } from '@elysia/eden'
 
 const apiAppNoPrefix = new Elysia()
@@ -24,6 +25,7 @@ const apiAppNoPrefix = new Elysia()
   .use(hackmudShellHandler)
   .use(findClientsHandler)
   .use(socketServerHandler)
+  .use(sandboxesHandler)
   .use(healthHandler);
 
 export const apiApp = new Elysia({ prefix: env.API_BASE_URL, name: "hacked-mud-api" }).use(
