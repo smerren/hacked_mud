@@ -7,6 +7,9 @@
 
 > Not AI slop! I like emojis! fight me!
 
+> [!WARNING]
+> **Windows port disclaimer:** the Windows port in this fork (the `windows-port` branch) was made with AI (Claude, by Anthropic), directed and tested by a human. The quote above is about the original Linux project by CakeEaterGames, which was not made with AI. The port has been tested on one Windows 11 machine. Read the code before you trust it, and see [🪟 Windows](#-windows) for how to use it.
+
 ## 🕵️ Introduction
 
 `hacked mud` is a legal custom client for an MMO game [hackmud](https://hackmud.com/)
@@ -143,6 +146,8 @@ This project is not just software. It is an effort to document the process of re
 
 ## 🚀 Getting started
 
+### 🐧 Linux
+
 **Prerequisites:**
 
 - Linux OS with X11 support
@@ -161,6 +166,125 @@ make prod
 ```
 
 Everything that you need to know is in the [documentation](https://cakeeatergames.github.io/hacked_mud/)
+
+## 🪟 Windows
+
+> [!NOTE]
+> This port was made with AI, see the disclaimer at the top. It runs natively on Windows: no Docker, WSL or X11 needed.
+
+**Requirements:**
+
+- Windows 10 or 11, 64-bit
+- Steam with [hackmud](https://store.steampowered.com/app/469920/hackmud/) installed
+- Optional, for running several accounts at once: more Steam accounts that own hackmud
+
+### Option 1: installer (recommended)
+
+There is no published release yet, so you build the installer yourself once. On the build machine you need [Bun](https://bun.sh) and [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`).
+
+```powershell
+git clone -b windows-port https://github.com/smerren/hacked_mud.git
+cd hacked_mud
+powershell -ExecutionPolicy Bypass -File installer\build.ps1
+```
+
+This creates `dist\hacked_mud-setup-<version>.exe`. You can copy that single file to any Windows PC; nothing else is needed there.
+
+Running the setup:
+
+- It installs for your user only, into `%LOCALAPPDATA%\Programs\hacked mud`, and doesn't need admin rights.
+- The exe isn't code-signed, so Windows SmartScreen will warn you. Click **More info → Run anyway**.
+- Tick **"Set up a second Steam account"** if you want to run more than one hackmud account. This installs [Sandboxie-Plus](https://sandboxie-plus.com/), which asks for admin rights for its driver.
+
+### Option 2: from source
+
+```powershell
+git clone -b windows-port https://github.com/smerren/hacked_mud.git
+cd hacked_mud
+bun install
+```
+
+Create `backend/.env`:
+
+```env
+NODE_ENV=development
+API_BASE_URL="/hacked_mud_api"
+API_FULL_URL="http://localhost:3000/hacked_mud_api"
+LOGGER_LEVEL="debug"
+```
+
+Create `frontend/.env`:
+
+```env
+NODE_ENV=development
+API_BASE_URL="/hacked_mud_api"
+API_FULL_URL="http://localhost:3000/hacked_mud_api"
+DASHBOARD_FRONTEND_BASE_URL="/hacked_mud_dashboard"
+DASHBOARD_FRONTEND_FULL_URL="http://localhost:9000/hacked_mud_dashboard"
+```
+
+Then run the backend and the dashboard in two terminals:
+
+```powershell
+cd backend; bun run dev     # API on port 3000
+cd frontend; bun run dev    # dashboard on http://localhost:9000/hacked_mud_dashboard/
+```
+
+### Using it
+
+1. Start hackmud from Steam and log in.
+2. Start **hacked mud** from the Start Menu, or run it from source as above. A console window with logs opens, and the dashboard opens in your browser at <http://localhost:3000/hacked_mud_dashboard/>. Closing the console window stops hacked mud.
+3. hacked mud finds running hackmud windows by itself, checking every 60 seconds. The first time it attaches to a game it scans memory, which can take a few seconds.
+4. Type commands into the dashboard. They're sent to the game window as keystrokes, and the game window doesn't need to be focused.
+5. Press **ESC** or click the ⚙️ button for controls: switch between clients, run scenarios, and manage Steam sandboxes.
+
+Logs, cache and settings are kept next to the app: in the install folder, or in `backend/` when running from source. If port 3000 is taken, set the `PORT` environment variable.
+
+### Multiple accounts with Steam sandboxes
+
+Steam only runs one account at a time per Windows user, and every hackmud instance needs its own logged-in Steam. hacked mud solves this with [Sandboxie-Plus](https://sandboxie-plus.com/) boxes: each box runs its own Steam with a different account, next to your normal Steam.
+
+In the dashboard settings (ESC / ⚙️) under **Steam sandboxes**:
+
+- **Add sandbox** creates `HackmudAlt`, `HackmudAlt2`, `HackmudAlt3`, ... You can add and remove them while hacked mud is running.
+- **Steam** starts Steam inside the box. Log in with a different account the first time; Steam remembers it after that. Each new box starts with auto-login disabled, so it never logs in as your main account.
+- **hackmud** starts Steam and hackmud inside the box.
+- **Stop** closes everything running in that box.
+- **When hacked mud starts** chooses what each box starts automatically: nothing, Steam, or hackmud.
+- **Remove** deletes the box. Its files (Steam login, scripts) are kept unless you tick "Also delete its files".
+
+Sandboxed games show up in hacked mud like any other client. Sandboxed windows have a yellow border and `[#]` in the title.
+
+> [!IMPORTANT]
+> A sandboxed hackmud keeps its scripts and `.key` files inside the box, at `C:\Sandbox\<your user>\HackmudAltN\user\current\AppData\Roaming\hackmud`, not in your normal `%APPDATA%\hackmud`. Copy over any scripts you want that account to have.
+
+Only boxes named `HackmudAlt...` are managed. Any other Sandboxie boxes you have are left alone.
+
+### Checking that it works
+
+From `backend/`, with hackmud running:
+
+```powershell
+bun run scripts/windows-smoke.ts                          # finds clients, reads memory
+bun run scripts/windows-smoke.ts --type "accts.balance"   # also types a command into each client
+```
+
+### Known limitations
+
+- **Antivirus / SmartScreen:** an unsigned app that reads another program's memory and sends keystrokes may get flagged.
+- **Game updates:** Windows hackmud uses a differently compiled Mono runtime than Linux, so some memory offsets are Windows-specific (see `backend/src/modules/monoParser/monoParser.models.ts`). They were measured against the current hackmud build, and a game update could move them.
+- **No Docker on Windows:** Windows containers can't run Steam or games (no desktop), and need Windows Pro. Sandboxie is used instead.
+- **Linux:** the Linux code was moved behind a platform layer without changing its behavior, but the port hasn't been re-tested on Linux.
+
+### Where the Windows code lives
+
+| Path | What it does |
+| --- | --- |
+| `backend/src/modules/platform/` | Linux and Windows implementations of process discovery, memory reading and keyboard input |
+| `backend/src/modules/sandboxes/` | Sandboxie box management API |
+| `backend/src/modules/dashboard/` | serves the dashboard from the backend in packaged builds |
+| `frontend/src/components/SandboxesPanel.vue` | the Steam sandboxes panel |
+| `installer/` | installer build script and Inno Setup script |
 
 Happy automating, mudders 👍
 
